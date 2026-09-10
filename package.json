@@ -1,0 +1,8 @@
+{
+  "name": "contador-en-claro",
+  "version": "0.1.0",
+  "private": true,
+  "description": "MVP de Contador en Claro: respuestas fiscales revisables para contadores mexicanos.",
+  "scripts": { "start": "node server.js" },
+  "engines": { "node": ">=18" }
+}
