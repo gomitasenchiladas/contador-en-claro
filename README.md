@@ -26,7 +26,7 @@ Abre http://localhost:3000
 
 ## Importante
 
-Sin `AI_API_KEY`, el generador usa un motor de demostración determinista. Con `AI_API_KEY`, `AI_MODEL` y `AI_BASE_URL` configura un proveedor compatible con Chat Completions y la aplicación llamará al modelo desde el backend; la clave nunca llega al navegador. Para producción todavía hay que añadir RAG con fuentes oficiales revisadas, autenticación real, base de datos administrada, control de acceso, políticas de privacidad y pagos. No usar este MVP para presentar declaraciones ni para guardar credenciales fiscales.
+Sin `AI_API_KEY`, el generador usa un motor de demostración determinista. Con `AI_API_KEY`, `AI_MODEL` y `AI_BASE_URL` configura un proveedor compatible con Chat Completions y la aplicación llamará al modelo desde el backend; la clave nunca llega al navegador. Con `DATABASE_URL`, el backend usa PostgreSQL para persistir consultas y lista de espera; sin ella conserva el almacenamiento local de demo. Para producción todavía hay que añadir RAG con fuentes oficiales revisadas, autenticación real, control de acceso, políticas de privacidad y pagos. No usar este MVP para presentar declaraciones ni para guardar credenciales fiscales.
 
 ## Publicación
 

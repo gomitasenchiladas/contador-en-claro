@@ -4,5 +4,6 @@
   "private": true,
   "description": "MVP de Contador en Claro: respuestas fiscales revisables para contadores mexicanos.",
   "scripts": { "start": "node server.js" },
+  "dependencies": { "pg": "^8.13.1" },
   "engines": { "node": ">=18" }
 }

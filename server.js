@@ -2,6 +2,8 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+let Pool;
+try { ({ Pool } = require('pg')); } catch { Pool = null; }
 
 const root = __dirname;
 const publicDir = path.join(root, 'public');
@@ -10,9 +12,28 @@ const storeFile = path.join(dataDir, 'store.json');
 const port = Number(process.env.PORT || 3000);
 fs.mkdirSync(dataDir, { recursive: true });
 if (!fs.existsSync(storeFile)) fs.writeFileSync(storeFile, JSON.stringify({ consultations: [], waitlist: [] }, null, 2));
+let db = null;
 
 function readStore() { try { return JSON.parse(fs.readFileSync(storeFile, 'utf8')); } catch { return { consultations: [], waitlist: [] }; } }
 function writeStore(value) { fs.writeFileSync(storeFile, JSON.stringify(value, null, 2)); }
+async function initDb() {
+  if (!process.env.DATABASE_URL) return;
+  if (!Pool) throw new Error('DATABASE_URL está configurada pero falta la dependencia pg');
+  db = new Pool({ connectionString: process.env.DATABASE_URL, ssl: process.env.DATABASE_SSL !== 'false' ? { rejectUnauthorized: false } : undefined });
+  await db.query(`CREATE TABLE IF NOT EXISTS consultations (id text PRIMARY KEY, question text NOT NULL, category text, regime text, answer jsonb NOT NULL, created_at timestamptz NOT NULL DEFAULT now()); CREATE TABLE IF NOT EXISTS waitlist (email text PRIMARY KEY, created_at timestamptz NOT NULL DEFAULT now());`);
+}
+async function listConsultations() {
+  if (db) { const { rows } = await db.query('SELECT id, question, category, regime, answer, created_at AS "createdAt" FROM consultations ORDER BY created_at DESC LIMIT 20'); return rows; }
+  return readStore().consultations.slice(-20).reverse();
+}
+async function saveConsultation(item) {
+  if (db) { await db.query('INSERT INTO consultations (id, question, category, regime, answer, created_at) VALUES ($1,$2,$3,$4,$5,$6)', [item.id, item.question, item.category, item.regime, item.answer, item.createdAt]); return; }
+  const store = readStore(); store.consultations.push(item); writeStore(store);
+}
+async function saveWaitlist(email) {
+  if (db) { await db.query('INSERT INTO waitlist (email) VALUES ($1) ON CONFLICT (email) DO NOTHING', [email]); return; }
+  const store = readStore(); if (!store.waitlist.some(x => x.email === email)) store.waitlist.push({ email, createdAt: new Date().toISOString() }); writeStore(store);
+}
 function json(res, status, body) { res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }); res.end(JSON.stringify(body)); }
 function body(req) { return new Promise((resolve, reject) => { let raw = ''; req.on('data', c => { raw += c; if (raw.length > 200000) req.destroy(); }); req.on('end', () => { try { resolve(raw ? JSON.parse(raw) : {}); } catch { reject(new Error('JSON inválido')); } }); req.on('error', reject); }); }
 function clean(value, max = 3000) { return String(value || '').trim().slice(0, max); }
@@ -69,19 +90,19 @@ const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
   try {
     if (req.method === 'GET' && url.pathname === '/api/health') return json(res, 200, { ok: true, app: 'contador-en-claro' });
-    if (req.method === 'GET' && url.pathname === '/api/consultations') return json(res, 200, { consultations: readStore().consultations.slice(-20).reverse() });
+    if (req.method === 'GET' && url.pathname === '/api/consultations') return json(res, 200, { consultations: await listConsultations() });
     if (req.method === 'POST' && url.pathname === '/api/consultations') {
       const input = await body(req);
       if (clean(input.question).length < 8) return json(res, 400, { error: 'Escribe una consulta de al menos 8 caracteres.' });
       const answer = await generateAnswer(input);
       const item = { id: crypto.randomUUID(), question: clean(input.question), category: clean(input.category, 40), regime: clean(input.regime, 80), answer, createdAt: new Date().toISOString() };
-      const store = readStore(); store.consultations.push(item); writeStore(store);
+      await saveConsultation(item);
       return json(res, 201, item);
     }
     if (req.method === 'POST' && url.pathname === '/api/waitlist') {
       const input = await body(req); const email = clean(input.email, 160).toLowerCase();
       if (!/^\S+@\S+\.\S+$/.test(email)) return json(res, 400, { error: 'Introduce un correo válido.' });
-      const store = readStore(); if (!store.waitlist.some(x => x.email === email)) store.waitlist.push({ email, createdAt: new Date().toISOString() }); writeStore(store);
+      await saveWaitlist(email);
       return json(res, 201, { ok: true, message: 'Te agregamos a la lista de acceso anticipado.' });
     }
     if (req.method === 'GET') {
@@ -94,4 +115,4 @@ const server = http.createServer(async (req, res) => {
     return json(res, 404, { error: 'No encontrado' });
   } catch (error) { return json(res, 500, { error: error.message || 'Error interno' }); }
 });
-server.listen(port, () => console.log(`Contador en Claro listo en http://localhost:${port}`));
+initDb().then(() => server.listen(port, () => console.log(`Contador en Claro listo en http://localhost:${port}`))).catch(error => { console.error(error); process.exit(1); });
